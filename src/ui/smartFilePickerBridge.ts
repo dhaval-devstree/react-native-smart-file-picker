@@ -27,7 +27,7 @@ class Bridge {
       // If the host isn't mounted, fall back to "direct" mode (no bottom-sheet UI).
       // This enables calling `openSmartFilePicker(...)` from a button handler without rendering `<SmartFilePickerHost />`,
       // as long as the request resolves to a single action (or `direct: true`).
-      if (this.listeners.size === 0) {
+      if (this.listeners.size == 0) {
         void (async () => {
           try {
             const result = await openWithoutHost(options);
@@ -51,7 +51,7 @@ class Bridge {
   }
 
   clear(req: OpenRequest) {
-    if (this.current === req) this.current = null;
+    if (this.current == req) this.current = null;
   }
 }
 
@@ -87,10 +87,10 @@ function actionsForType(type: FileSelectionType): ActionId[] {
 }
 
 function actionsFromUiOptions(actions?: SmartFilePickerUiAction[]): ActionId[] | null {
-  if (!actions || actions.length === 0) return null;
+  if (!actions || actions.length == 0) return null;
   const mapped: ActionId[] = [];
   for (const entry of actions) {
-    const action: SmartFilePickerAction = typeof entry === "string" ? entry : entry.action;
+    const action: SmartFilePickerAction = typeof entry == "string" ? entry : entry.action;
     switch (action) {
       case "CAPTURE_IMAGE":
         mapped.push("captureImage");
@@ -131,9 +131,9 @@ async function openWithoutHost(options: SmartFilePickerOptions): Promise<SmartFi
   const type = options.type ?? FileSelectionType.ALL;
   const actions = actionsFromUiOptions(options.ui?.actions) ?? actionsForType(type);
 
-  const shouldForceDirect = options.direct === true;
-  const shouldForceSheet = options.direct === false;
-  const shouldAutoDirect = !shouldForceSheet && (shouldForceDirect || actions.length === 1);
+  const shouldForceDirect = options.direct == true;
+  const shouldForceSheet = options.direct == false;
+  const shouldAutoDirect = !shouldForceSheet && (shouldForceDirect || actions.length == 1);
 
   if (!shouldAutoDirect) {
     throw new SmartFilePickerError(

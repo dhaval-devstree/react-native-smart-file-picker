@@ -32,21 +32,21 @@ function getRNPermissions(): RNPermissionsModule {
 function iosMajorVersion(): number {
   if (Platform.OS !== "ios") return 0;
   const raw = Platform.Version;
-  const asString = typeof raw === "string" ? raw : String(raw);
+  const asString = typeof raw == "string" ? raw : String(raw);
   const major = parseInt(asString.split(".")[0] ?? "0", 10);
   return Number.isFinite(major) ? major : 0;
 }
 
 function permissionsForAction(action: string): string[] {
-  if (Platform.OS === "android") {
-    if (action === "CAPTURE_IMAGE" || action === "CAPTURE_VIDEO") {
+  if (Platform.OS == "android") {
+    if (action == "CAPTURE_IMAGE" || action == "CAPTURE_VIDEO") {
       const { PERMISSIONS } = getRNPermissions();
       return [PERMISSIONS.ANDROID.CAMERA];
     }
     return [];
   }
 
-  if (Platform.OS === "ios") {
+  if (Platform.OS == "ios") {
     switch (action) {
       case "CAPTURE_IMAGE":
         return [getRNPermissions().PERMISSIONS.IOS.CAMERA];
@@ -67,7 +67,7 @@ function permissionsForAction(action: string): string[] {
 }
 
 function isGranted(status: string, RESULTS: Record<string, string>): boolean {
-  return status === RESULTS.GRANTED || status === RESULTS.LIMITED;
+  return status == RESULTS.GRANTED || status == RESULTS.LIMITED;
 }
 
 function defaultPromptForPermission(permission: string): { title: string; description: string } {
@@ -120,7 +120,7 @@ function showPermissionDeniedAlert(options: SmartFilePickerOptions, permission: 
  */
 export async function ensurePermissionsForAction(action: string, options: SmartFilePickerOptions): Promise<boolean> {
   const permissions = permissionsForAction(action);
-  if (permissions.length === 0) return true;
+  if (permissions.length == 0) return true;
   const perms = getRNPermissions();
 
   for (const permission of permissions) {

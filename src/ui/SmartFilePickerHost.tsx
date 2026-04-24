@@ -54,11 +54,11 @@ function actionsForType(type: FileSelectionType): UiActionItem[] {
 }
 
 function actionsFromUiOptions(actions?: SmartFilePickerUiAction[]): UiActionItem[] | null {
-  if (!actions || actions.length === 0) return null;
+  if (!actions || actions.length == 0) return null;
   const mapped: UiActionItem[] = [];
   for (const entry of actions) {
-    const action: SmartFilePickerAction = typeof entry === "string" ? entry : entry.action;
-    const label = typeof entry === "string" ? undefined : entry.label;
+    const action: SmartFilePickerAction = typeof entry == "string" ? entry : entry.action;
+    const label = typeof entry == "string" ? undefined : entry.label;
     switch (action) {
       case "CAPTURE_IMAGE":
         mapped.push({ id: "captureImage", label });
@@ -136,9 +136,9 @@ export function SmartFilePickerHost(props: SmartFilePickerHostProps = {}): JSX.E
     [options.ui?.actions]
   );
   const finalActions = overriddenActions ?? actions;
-  const shouldForceDirect = req?.options.direct === true;
-  const shouldForceSheet = req?.options.direct === false;
-  const shouldAutoDirect = !shouldForceSheet && (shouldForceDirect || finalActions.length === 1);
+  const shouldForceDirect = req?.options.direct == true;
+  const shouldForceSheet = req?.options.direct == false;
+  const shouldAutoDirect = !shouldForceSheet && (shouldForceDirect || finalActions.length == 1);
 
   useEffect(() => {
     if (visible && !shouldAutoDirect) {
@@ -173,10 +173,9 @@ export function SmartFilePickerHost(props: SmartFilePickerHostProps = {}): JSX.E
   useEffect(() => {
     if (!req) return;
     if (!shouldAutoDirect) return;
-    if (autoRunForReq.current === req) return;
+    if (autoRunForReq.current == req) return;
     autoRunForReq.current = req;
     void runAction(finalActions[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [req, shouldAutoDirect, finalActions]);
 
   if (!visible) return null;
