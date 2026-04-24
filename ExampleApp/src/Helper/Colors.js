@@ -1,0 +1,14 @@
+export default {
+
+  WHITE: '#FFFFFF',
+
+  BLACK_LIGHT: '#0B0F14',
+  BLACK_LIGHT_CONTRAST: '#111111',
+
+  BACKGROUND: 'rgba(11,15,20,0.6)',
+  BACKGROUND_LIGHT: 'rgba(11,15,20,0.12)',
+  BACKGROUND_LIGHT_CONTRAST: 'rgba(0,0,0,0.45)',
+
+  BLUE: '#0B5FFF',
+
+};
