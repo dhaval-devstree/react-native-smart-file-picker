@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.smartfilepicker">
+
+  <uses-permission android:name="android.permission.CAMERA" />
+
+  <application>
+    <activity
+      android:name="com.yalantis.ucrop.UCropActivity"
+      android:exported="false"
+      android:screenOrientation="portrait"
+      android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
+    <provider
+      android:name="androidx.core.content.FileProvider"
+      android:authorities="${applicationId}.smartfilepicker.provider"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/smart_file_picker_provider_paths" />
+    </provider>
+  </application>
+</manifest>
