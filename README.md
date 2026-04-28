@@ -231,6 +231,7 @@ Common options (see `src/types.ts` for the full list):
 - Crop is only supported for a single image. If `multiple: true` and crop is enabled, the picker returns an error.
 - iOS < 14 uses `UIImagePickerController` for photo picking (single selection only). iOS 14+ uses `PHPicker` (supports multiple).
 - The library copies picked/captured media to a temporary cache location and returns it as `localPath`.
+- To delete all cached picker files, call `clearSmartFilePickerCache()` (or `SmartFilePickerNative.clearCache()`).
 
 ### Permission dialog keys
 
@@ -264,6 +265,8 @@ Used by `options.compress` (images only):
 | quality | `100` | 0..100 (JPEG/WebP lossy). |
 | format | `jpeg` | `jpeg`, `png`, or `webp` (platform support may vary). |
 | maxWidth / maxHeight | unset | Resize to fit within bounds (keeps aspect ratio). |
+
+Note: When `compress.enabled: true`, the library only keeps the compressed output in cache (it does not retain an additional original copy).
 
 ### Host theme (recommended)
 

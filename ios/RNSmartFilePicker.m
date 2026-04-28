@@ -7,5 +7,10 @@ RCT_EXTERN_METHOD(performAction:(NSString *)action
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
-@end
+RCT_EXTERN_METHOD(clearCache:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(getCachePath:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+@end

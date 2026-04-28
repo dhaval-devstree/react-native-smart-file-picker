@@ -91,6 +91,30 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
+  @ReactMethod
+  fun clearCache(promise: Promise) {
+    ioExecutor.execute {
+      try {
+        val dir = File(reactContext.cacheDir, "smart-file-picker")
+        if (dir.exists()) {
+          dir.deleteRecursively()
+        }
+        promise.resolve(null)
+      } catch (e: Exception) {
+        promise.reject("E_CLEAR_CACHE", e.message ?: "Failed to clear cache")
+      }
+    }
+  }
+
+  @ReactMethod
+  fun getCachePath(promise: Promise) {
+    try {
+      promise.resolve(ensureCacheDir().absolutePath)
+    } catch (e: Exception) {
+      promise.reject("E_CACHE_PATH", e.message ?: "Failed to get cache path")
+    }
+  }
+
   private fun isPermissionGranted(activity: Activity, permission: String): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
     return activity.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -329,17 +353,23 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
     val compressEnabled = compress?.optBoolean("enabled", false) == true
 
     val sourceFile = copyUriToCache(uri, options, preferredExt = guessImageExt(uri))
-    val processedFile = if (compressEnabled) {
-      transcodeImage(
-        sourceFile,
-        quality = compress?.optInt("quality") ?: 100,
-        format = compress?.optString("format") ?: "jpeg",
-        maxWidth = compress?.optInt("maxWidth") ?: 0,
-        maxHeight = compress?.optInt("maxHeight") ?: 0
-      )
-    } else {
-      sourceFile
-    }
+    val processedFile =
+      if (compressEnabled) {
+        val out = transcodeImage(
+          sourceFile,
+          quality = compress?.optInt("quality") ?: 100,
+          format = compress?.optString("format") ?: "jpeg",
+          maxWidth = compress?.optInt("maxWidth") ?: 0,
+          maxHeight = compress?.optInt("maxHeight") ?: 0
+        )
+        // Avoid keeping both original and compressed copies in cache.
+        if (out.absolutePath != sourceFile.absolutePath) {
+          try { sourceFile.delete() } catch (_: Exception) {}
+        }
+        out
+      } else {
+        sourceFile
+      }
 
     val (w, h) = decodeImageSize(processedFile)
     val mime = guessMimeFromExt(processedFile.extension, fallback = contentType(uri))

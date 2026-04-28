@@ -4,6 +4,8 @@ import { ensurePermissionsForAction } from "../permissions";
 
 type NativeSmartFilePicker = {
   performAction(action: string, options: SmartFilePickerOptions): Promise<SmartFilePickerResult>;
+  clearCache(): Promise<void>;
+  getCachePath(): Promise<string>;
 };
 
 const LINKING_ERROR =
@@ -25,4 +27,12 @@ export async function performAction(action: string, options: SmartFilePickerOpti
   const ok = await ensurePermissionsForAction(action, options);
   if (!ok) return { medias: [] };
   return getNative().performAction(action, options);
+}
+
+export async function clearCache(): Promise<void> {
+  return getNative().clearCache();
+}
+
+export async function getCachePath(): Promise<string> {
+  return getNative().getCachePath();
 }

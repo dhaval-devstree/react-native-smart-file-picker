@@ -65,6 +65,30 @@ class RNSmartFilePicker: NSObject {
     }
   }
 
+  @objc(clearCache:rejecter:)
+  func clearCache(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+    do {
+      let dir = cacheDir()
+      if FileManager.default.fileExists(atPath: dir.path) {
+        try FileManager.default.removeItem(at: dir)
+      }
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      resolve(nil)
+    } catch {
+      reject("E_CLEAR_CACHE", error.localizedDescription, error)
+    }
+  }
+
+  @objc(getCachePath:rejecter:)
+  func getCachePath(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+    let dir = cacheDir()
+    if dir.isFileURL {
+      resolve(dir.path)
+    } else {
+      resolve(dir.absoluteString)
+    }
+  }
+
   private func presentCamera(mediaTypes: [String]) {
     guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
       rejectAndClear(code: "E_CAMERA", message: "Camera not available")
