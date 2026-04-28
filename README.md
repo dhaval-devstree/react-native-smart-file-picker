@@ -246,6 +246,8 @@ Used by `options.permission` when a required permission is not granted:
 | ok | `OK` | OK button label. |
 | openSettings | `true` | When `true`, OK opens device settings. |
 
+Note: On Android, `PICK_IMAGE` / `PICK_VIDEO` may request media read permission (`READ_MEDIA_*` on Android 13+, or `READ_EXTERNAL_STORAGE` on older Androids) depending on the picker/trimmer behavior.
+
 ### Crop options
 
 Used by `options.crop` (images only):

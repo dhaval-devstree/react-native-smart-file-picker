@@ -255,9 +255,20 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
 
         val trimmedPath = data.getStringExtra(VideoTrimActivity.EXTRA_OUTPUT_PATH)
         if (trimmedPath.isNullOrBlank()) {
-          // User cancelled trim.
+          // User cancelled trim (back button). Clean up temp cached copy and return original Uri info (no localPath).
           try { sourceFile?.delete() } catch (_: Exception) {}
-          resolveEmpty()
+          ioExecutor.execute {
+            try {
+              val media = buildVideoMediaFromContentUri(original)
+              val result = Arguments.createMap().apply {
+                putArray("medias", Arguments.createArray().apply { pushMap(media) })
+              }
+              resolve(result)
+            } catch (e: Exception) {
+              // Fallback: behave like cancel.
+              resolveEmpty()
+            }
+          }
           return
         }
 
@@ -382,6 +393,8 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
             reject("E_TRIM", e.message ?: "Failed to start video trim")
           }
         }
+      } catch (e: SecurityException) {
+        reject("E_PERMISSION_DENIED", "Storage permission denied")
       } catch (e: Exception) {
         reject("E_TRIM", e.message ?: "Failed to prepare video for trim")
       }
@@ -445,6 +458,8 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
           putArray("medias", medias)
         }
         resolve(result)
+      } catch (e: SecurityException) {
+        reject("E_PERMISSION_DENIED", "Storage permission denied")
       } catch (e: Exception) {
         reject("E_PROCESS", e.message ?: "Failed to process media")
       }
@@ -532,6 +547,31 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
       putString("fileName", file.name)
       putString("mimeType", mime)
       putDouble("fileSize", file.length().toDouble())
+      if (durationMs != null) putInt("durationMs", durationMs)
+    }
+  }
+
+  private fun buildVideoMediaFromContentUri(originalUri: Uri): WritableMap {
+    val retriever = MediaMetadataRetriever()
+    var durationMs: Int? = null
+    try {
+      retriever.setDataSource(reactContext, originalUri)
+      durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toIntOrNull()
+    } catch (_: Exception) {
+    } finally {
+      try { retriever.release() } catch (_: Exception) {}
+    }
+
+    val mime = contentType(originalUri) ?: "video/*"
+    val name = queryDisplayName(originalUri)
+    val size = querySize(originalUri)
+
+    return Arguments.createMap().apply {
+      putString("kind", "video")
+      putString("uri", originalUri.toString())
+      if (!name.isNullOrBlank()) putString("fileName", name)
+      putString("mimeType", mime)
+      if (size != null) putDouble("fileSize", size.toDouble())
       if (durationMs != null) putInt("durationMs", durationMs)
     }
   }
@@ -625,6 +665,9 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
         if (outFile.length() > 0L) break
         // Some providers (notably camera/video) may finish writing asynchronously.
         Thread.sleep(250)
+      } catch (e: SecurityException) {
+        // Permission denied: don't retry.
+        throw e
       } catch (e: Exception) {
         lastErr = e
         if (attempt == 6) throw e
@@ -719,6 +762,21 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
       cursor = reactContext.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
       if (cursor != null && cursor.moveToFirst()) {
         return cursor.getString(0)
+      }
+    } catch (_: Exception) {
+    } finally {
+      try { cursor?.close() } catch (_: Exception) {}
+    }
+    return null
+  }
+
+  private fun querySize(uri: Uri): Long? {
+    var cursor: Cursor? = null
+    try {
+      cursor = reactContext.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+      if (cursor != null && cursor.moveToFirst()) {
+        val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (idx >= 0) return cursor.getLong(idx).takeIf { it >= 0L }
       }
     } catch (_: Exception) {
     } finally {

@@ -37,11 +37,20 @@ function iosMajorVersion(): number {
   return Number.isFinite(major) ? major : 0;
 }
 
-function permissionsForAction(action: string): string[] {
+function permissionsForAction(action: string, options: SmartFilePickerOptions): string[] {
   if (Platform.OS == "android") {
     if (action == "CAPTURE_IMAGE" || action == "CAPTURE_VIDEO") {
       const { PERMISSIONS } = getRNPermissions();
       return [PERMISSIONS.ANDROID.CAMERA];
+    }
+    if (action == "PICK_IMAGE" || action == "PICK_VIDEO") {
+      // ACTION_OPEN_DOCUMENT often works without storage permissions, but some OEM pickers / file:// paths
+      // (and the Android video trimmer UI) can require read access.
+      const { PERMISSIONS } = getRNPermissions();
+      if (Platform.Version >= 33) {
+        return [action == "PICK_VIDEO" ? PERMISSIONS.ANDROID.READ_MEDIA_VIDEO : PERMISSIONS.ANDROID.READ_MEDIA_IMAGES];
+      }
+      return [PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE];
     }
     return [];
   }
@@ -55,7 +64,9 @@ function permissionsForAction(action: string): string[] {
       case "PICK_IMAGE":
       case "PICK_VIDEO": {
         // iOS 14+ uses PHPicker which doesn't require photo library permission.
-        // iOS < 14 uses UIImagePickerController which does.
+        // However, when video trim UI is enabled we force UIImagePickerController which does.
+        const trimEnabled = (options.video as any)?.trim?.enabled === true;
+        if (trimEnabled) return [getRNPermissions().PERMISSIONS.IOS.PHOTO_LIBRARY];
         return iosMajorVersion() >= 14 ? [] : [getRNPermissions().PERMISSIONS.IOS.PHOTO_LIBRARY];
       }
       default:
@@ -90,6 +101,12 @@ function defaultPromptForPermission(permission: string): { title: string; descri
       description: "This app would like to access your photo library to continue."
     };
   }
+  if (lower.includes("read_media") || lower.includes("external_storage") || lower.includes("storage")) {
+    return {
+      title: "Storage Permission",
+      description: "This app would like to access your media files to continue."
+    };
+  }
   return {
     title: "Permission Required",
     description: "This app needs permission to continue."
@@ -119,7 +136,7 @@ function showPermissionDeniedAlert(options: SmartFilePickerOptions, permission: 
  * Throws only when `react-native-permissions` is missing/misconfigured.
  */
 export async function ensurePermissionsForAction(action: string, options: SmartFilePickerOptions): Promise<boolean> {
-  const permissions = permissionsForAction(action);
+  const permissions = permissionsForAction(action, options);
   if (permissions.length == 0) return true;
   const perms = getRNPermissions();
 
