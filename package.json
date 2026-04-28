@@ -4,8 +4,12 @@
   "description": "Smart file picker for React Native (Android & iOS) with dynamic bottom-sheet UI, camera/gallery/document support, crop and compression.",
   "license": "MIT",
   "main": "lib/commonjs/index.js",
-  "module": "lib/module/index.js",
   "types": "lib/typescript/index.d.ts",
+  "typings": "src/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhaval-devstree/react-native-smart-file-picker"
+  },
   "react-native": "src/index.ts",
   "source": "src/index.ts",
   "files": [
@@ -16,11 +20,25 @@
     "react-native-smart-file-picker.podspec",
     "README.md"
   ],
-  "scripts": {
-    "clean": "rm -rf lib",
-    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.build.json --module ESNext --outDir lib/module",
-    "prepack": "yarn build"
+  "keywords": [
+    "react-native",
+    "file-picker",
+    "crop",
+    "capture-image",
+    "image-cropper",
+    "image-compressor",
+    "pick-image",
+    "pick-document",
+    "pick-video",
+    "document-picker",
+    "video-picker",
+    "image-picker"
+  ],
+  "author": "Dhaval",
+  "bugs": {
+    "url": "https://github.com/dhaval-devstree/react-native-smart-file-picker/issues"
   },
+  "homepage": "https://github.com/dhaval-devstree/react-native-smart-file-picker",
   "peerDependencies": {
     "react": ">=17",
     "react-native": ">=0.71",
