@@ -31,6 +31,7 @@ How permission is handled:
 - The library calls `request(PERMISSIONS.*.*)` before opening camera-based flows.
 - If the user denies permission, it shows an alert and can take the user to device settings.
 - If permission is denied/blocked/unavailable, `openSmartFilePicker(...)` resolves with an empty result (`{ medias: [] }`).
+  - Note: on Android, `PICK_IMAGE` / `PICK_VIDEO` do not request storage/media permissions by default (system pickers grant temporary URI access).
 
 Configure the iOS permission handlers in your app `Podfile` (choose what you need):
 

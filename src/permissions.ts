@@ -44,13 +44,13 @@ function permissionsForAction(action: string, options: SmartFilePickerOptions): 
       return [PERMISSIONS.ANDROID.CAMERA];
     }
     if (action == "PICK_IMAGE" || action == "PICK_VIDEO") {
-      // ACTION_OPEN_DOCUMENT often works without storage permissions, but some OEM pickers / file:// paths
-      // (and the Android video trimmer UI) can require read access.
-      const { PERMISSIONS } = getRNPermissions();
-      if (Platform.Version >= 33) {
-        return [action == "PICK_VIDEO" ? PERMISSIONS.ANDROID.READ_MEDIA_VIDEO : PERMISSIONS.ANDROID.READ_MEDIA_IMAGES];
-      }
-      return [PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE];
+      // Intents like ACTION_OPEN_DOCUMENT / system photo picker return `content://` URIs and grant temporary read access.
+      // Requesting READ_EXTERNAL_STORAGE / READ_MEDIA_* causes extra prompts and can fail (UNAVAILABLE) if the host app
+      // hasn't declared those permissions in AndroidManifest.xml. Default to no extra permission request here.
+      //
+      // If an app has a custom media flow that truly requires direct MediaStore/file access, it should request those
+      // permissions at the app level (or fork/extend this helper).
+      return [];
     }
     return [];
   }

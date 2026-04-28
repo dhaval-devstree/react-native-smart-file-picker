@@ -1,6 +1,6 @@
 {
   "name": "react-native-smart-file-picker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Smart file picker for React Native (Android & iOS) with dynamic bottom-sheet UI, camera/gallery/document support, crop and compression.",
   "license": "MIT",
   "main": "lib/commonjs/index.js",
