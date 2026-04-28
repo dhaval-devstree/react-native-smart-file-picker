@@ -46,6 +46,30 @@ export type CropOptions = {
   maxResultSize?: { width: number; height: number };
 };
 
+export type VideoTrimOptions = {
+  /**
+   * When true, shows a native trim UI after picking/capturing a video.
+   */
+  enabled: boolean;
+  /**
+   * Minimum duration for the trimmed output (milliseconds).
+   * If the platform can't enforce it in the UI, the library will validate after trimming.
+   */
+  minDurationMs?: number;
+  /**
+   * Optional maximum duration for the trimmed output (milliseconds).
+   * If not supported by the platform UI, it may be ignored.
+   */
+  maxDurationMs?: number;
+};
+
+export type VideoOptions = {
+  /**
+   * Native (user-driven) trimming. Applied after capture/pick and before returning `localPath`.
+   */
+  trim?: VideoTrimOptions;
+};
+
 export type CompressOptions = {
   enabled: boolean;
   quality?: number; // 0..100
@@ -96,6 +120,7 @@ export type SmartFilePickerOptions = {
   direct?: boolean;
   crop?: CropOptions;
   compress?: CompressOptions;
+  video?: VideoOptions;
   permission?: PermissionPrompt;
   theme?: SmartFilePickerTheme;
   labels?: SmartFilePickerLabels;

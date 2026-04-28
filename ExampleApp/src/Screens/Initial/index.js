@@ -13,7 +13,7 @@ const Initial = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <SafeAreaView edges={['top']} style={styles.flexStyle}>
+    <SafeAreaView edges={['top']} style={styles.container}>
       <StatusBar backgroundColor={Colors.WHITE} barStyle='dark-content' />
       <View style={styles.container}>
         <ScrollView contentContainerStyle={[styles.contentContainer, { paddingBottom: insets.bottom }]}>

@@ -71,6 +71,7 @@ const MediaPicker = () => {
       });
       setSelectedMedias(res.medias ?? []);
     } catch (e) {
+      console.log('handleSingleOptionSheet : e ==> ', e);
       setLastErrorMessage(e?.message ?? String(e));
     }
   };
@@ -97,6 +98,7 @@ const MediaPicker = () => {
       });
       setSelectedMedias(res.medias ?? []);
     } catch (e) {
+      console.log('handleMultipleOptionSheet : e ==> ', e);
       setLastErrorMessage(e?.message ?? String(e));
     }
   };
@@ -118,6 +120,30 @@ const MediaPicker = () => {
       });
       setSelectedMedias(res.medias ?? []);
     } catch (e) {
+      console.log('handleImageWithCrop : e ==> ', e);
+      setLastErrorMessage(e?.message ?? String(e));
+    }
+  };
+
+  const handleVideoWithTrim = async (type) => {
+    setLastErrorMessage(null);
+    try {
+      const res = await openSmartFilePicker({
+        type,
+        multiple: false,
+        documentMimeType: '*/*',
+        enableDocumentWithOriginalName: true,
+        crop: { enabled: false },
+        compress: { enabled: false },
+        video: { trim: { enabled: true, minDurationMs: 10_000 } },
+        ui: {
+          title: 'Smart File Picker',
+          subtitle: type == FileSelectionType.CAPTURE_VIDEO ? 'Capture video with trim UI' : 'Pick video with trim UI',
+        }
+      });
+      setSelectedMedias(res.medias ?? []);
+    } catch (e) {
+      console.log('handleVideoWithTrim : e ==> ', e);
       setLastErrorMessage(e?.message ?? String(e));
     }
   };
@@ -126,6 +152,8 @@ const MediaPicker = () => {
   const _onPressPickImageButton = () => handleSingleOptionSheet(FileSelectionType.PICK_IMAGE, false);
   const _onPressCaptureVideoButton = () => handleSingleOptionSheet(FileSelectionType.CAPTURE_VIDEO, false);
   const _onPressPickVideoButton = () => handleSingleOptionSheet(FileSelectionType.PICK_VIDEO, false);
+  const _onPressCaptureVideoWithTrimButton = () => handleVideoWithTrim(FileSelectionType.CAPTURE_VIDEO);
+  const _onPressPickVideoWithTrimButton = () => handleVideoWithTrim(FileSelectionType.PICK_VIDEO);
   const _onPressPickMultiImagesButton = () => handleSingleOptionSheet(FileSelectionType.PICK_IMAGE, true);
   const _onPressPickMultiVideosButton = () => handleSingleOptionSheet(FileSelectionType.PICK_VIDEO, true);
   const _onPressPickDocumentButton = () => handleSingleOptionSheet(FileSelectionType.PICK_DOCUMENT, false);
@@ -148,7 +176,7 @@ const MediaPicker = () => {
 
   const renderMainView = () => {
     return (
-      <SafeAreaView edges={['top']} style={styles.flexStyle}>
+      <SafeAreaView edges={['top']} style={styles.container}>
         <StatusBar backgroundColor={Colors.WHITE} barStyle='dark-content' />
         <View style={styles.container}>
           <ScrollView contentContainerStyle={[styles.mainContainer, { paddingBottom: insets.bottom }]}>
@@ -183,6 +211,10 @@ const MediaPicker = () => {
         <View style={styles.actionButtonView}>
           {renderActionButton(`Capture Video`, _onPressCaptureVideoButton)}
           {renderActionButton(`Pick Video`, _onPressPickVideoButton)}
+        </View>
+        <View style={styles.actionButtonView}>
+          {renderActionButton(`Capture Video (Trim)`, _onPressCaptureVideoWithTrimButton)}
+          {renderActionButton(`Pick Video (Trim)`, _onPressPickVideoWithTrimButton)}
         </View>
         <View style={styles.actionButtonView}>
           {renderActionButton(`Pick Multi Images`, _onPressPickMultiImagesButton)}
@@ -221,7 +253,7 @@ const MediaPicker = () => {
       <View style={styles.cardView}>
         <View style={styles.selectedItemView}>
           <Text style={styles.cardViewTitleTxt}>Selected Media</Text>
-          <Text style={styles.infoTxt}>{selectedMedias?.length} item(s)</Text>
+          <Text style={styles.infoTxt}>{selectedMedias?.length} {selectedMedias?.length > 1 ? 'items' : 'item'}</Text>
         </View>
         {selectedMedias?.map((item, index) => {
           return (

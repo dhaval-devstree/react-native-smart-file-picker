@@ -24,6 +24,10 @@ class RNSmartFilePicker: NSObject {
   private var pendingMedias: [[String: Any]] = []
 
   private var cropController: TOCropViewController?
+  private var videoEditor: UIVideoEditorController?
+  private var pendingVideoTrimCompletion: ((Result<URL?, Error>) -> Void)?
+  private var pendingVideoTrimEditorInputURL: URL?
+  private var pendingPhotoPickerRetryKind: MediaPickKind?
 
   @objc
   static func requiresMainQueueSetup() -> Bool {
@@ -99,6 +103,9 @@ class RNSmartFilePicker: NSObject {
     picker.mediaTypes = mediaTypes
     picker.delegate = self
     picker.videoQuality = .typeHigh
+    if shouldUsePickerEditingForVideoTrim(), mediaTypes.contains("public.movie") {
+      picker.allowsEditing = true
+    }
     present(picker)
   }
 
@@ -114,10 +121,23 @@ class RNSmartFilePicker: NSObject {
   }
 
   private func presentPhotoPicker(kind: MediaPickKind) {
+    if kind == .videos, shouldUsePickerEditingForVideoTrim() {
+      // Force UIImagePickerController when trim UI is requested (single selection).
+      pendingPhotoPickerRetryKind = kind
+      guard ensurePhotoLibraryPermissionGranted() else { return }
+      let picker = UIImagePickerController()
+      picker.sourceType = .photoLibrary
+      picker.delegate = self
+      picker.mediaTypes = ["public.movie"]
+      picker.allowsEditing = true
+      present(picker)
+      return
+    }
     if #available(iOS 14.0, *) {
       presentPHPicker(filter: kind == .videos ? .videos : .images)
       return
     }
+    pendingPhotoPickerRetryKind = kind
     guard ensurePhotoLibraryPermissionGranted() else { return }
     // iOS < 14 fallback: single selection only.
     let picker = UIImagePickerController()
@@ -214,6 +234,34 @@ class RNSmartFilePicker: NSObject {
     return c
   }
 
+  private func isVideoTrimEnabled() -> Bool {
+    guard let video = pendingOptions?["video"] as? NSDictionary else { return false }
+    guard let trim = video["trim"] as? NSDictionary else { return false }
+    return (trim["enabled"] as? Bool) ?? false
+  }
+
+  private func shouldUsePickerEditingForVideoTrim() -> Bool {
+    // Prefer UIImagePickerController's built-in trim UI for best compatibility.
+    // UIVideoEditorController can be unavailable (e.g. simulator / certain formats).
+    return isVideoTrimEnabled()
+  }
+
+  private func videoTrimMaxDurationSeconds() -> TimeInterval? {
+    guard let video = pendingOptions?["video"] as? NSDictionary else { return nil }
+    guard let trim = video["trim"] as? NSDictionary else { return nil }
+    guard let ms = trim["maxDurationMs"] as? NSNumber else { return nil }
+    let v = ms.doubleValue / 1000.0
+    return v > 0 ? v : nil
+  }
+
+  private func videoTrimMinDurationMs() -> Int? {
+    guard let video = pendingOptions?["video"] as? NSDictionary else { return nil }
+    guard let trim = video["trim"] as? NSDictionary else { return nil }
+    guard let ms = trim["minDurationMs"] as? NSNumber else { return nil }
+    let v = ms.intValue
+    return v > 0 ? v : nil
+  }
+
   private func cacheDir() -> URL {
     let dir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
       .appendingPathComponent("smart-file-picker", isDirectory: true)
@@ -273,8 +321,43 @@ class RNSmartFilePicker: NSObject {
     if #available(iOS 14.0, *), status == .limited {
       return true
     }
+    if status == .notDetermined {
+      // Ask permission and retry presenting the picker once we get an answer.
+      requestPhotoLibraryPermissionAndRetry()
+      return false
+    }
     rejectAndClear(code: "E_PERMISSION_DENIED", message: "Photo library permission denied")
     return false
+  }
+
+  private func requestPhotoLibraryPermissionAndRetry() {
+    let retryKind = pendingPhotoPickerRetryKind
+    // If nothing explicitly set, infer kind from pendingAction.
+    let kind: MediaPickKind
+    if let retryKind {
+      kind = retryKind
+    } else if pendingAction == "PICK_VIDEO" {
+      kind = .videos
+    } else {
+      kind = .images
+    }
+
+    let handler: (PHAuthorizationStatus) -> Void = { status in
+      DispatchQueue.main.async {
+        self.pendingPhotoPickerRetryKind = nil
+        if status == .authorized || status == .limited {
+          self.presentPhotoPicker(kind: kind)
+        } else {
+          self.rejectAndClear(code: "E_PERMISSION_DENIED", message: "Photo library permission denied")
+        }
+      }
+    }
+
+    if #available(iOS 14.0, *) {
+      PHPhotoLibrary.requestAuthorization(for: .readWrite, handler: handler)
+    } else {
+      PHPhotoLibrary.requestAuthorization(handler)
+    }
   }
 
   private func clearPending() {
@@ -286,6 +369,10 @@ class RNSmartFilePicker: NSObject {
     pendingPickedImageIndex = 0
     pendingMedias = []
     cropController = nil
+    videoEditor = nil
+    pendingVideoTrimCompletion = nil
+    pendingVideoTrimEditorInputURL = nil
+    pendingPhotoPickerRetryKind = nil
   }
 
   private func processPickedImagesIfNeeded() {
@@ -477,11 +564,39 @@ extension RNSmartFilePicker: UINavigationControllerDelegate, UIImagePickerContro
           self.rejectAndClear(code: "E_PICK", message: "Missing video URL")
           return
         }
-        do {
-          let media = try self.copyVideoToCache(originalURL: url)
-          self.resolveAndClear(medias: [media])
-        } catch {
-          self.rejectAndClear(code: "E_PROCESS", message: error.localizedDescription, error: error)
+        // If trim UI is enabled, UIImagePickerController returns the trimmed movie at `.mediaURL`.
+        // Just persist it to cache and return.
+        if self.shouldUsePickerEditingForVideoTrim() {
+          do {
+            let localURL = try self.copyVideoFileToCacheSync(originalURL: url)
+            if let minMs = self.videoTrimMinDurationMs() {
+              let durationMs = self.videoDurationMs(url: localURL)
+              if durationMs < minMs {
+                throw NSError(domain: "SmartFilePicker", code: 33, userInfo: [NSLocalizedDescriptionKey: "Trimmed video is shorter than the minimum duration"])
+              }
+            }
+            let media = try self.buildVideoMedia(originalURL: url, localURL: localURL)
+            self.resolveAndClear(medias: [media])
+          } catch {
+            self.rejectAndClear(code: "E_PROCESS", message: error.localizedDescription, error: error)
+          }
+          return
+        }
+
+        self.copyAndMaybeTrimVideoToCache(originalURL: url) { result in
+          DispatchQueue.main.async {
+            switch result {
+            case .success(let media):
+              self.resolveAndClear(medias: [media])
+            case .failure(let error):
+              let ns = error as NSError
+              if ns.domain == "SmartFilePicker" && ns.code == 29 {
+                self.resolveEmptyAndClear()
+              } else {
+                self.rejectAndClear(code: "E_PROCESS", message: error.localizedDescription, error: error)
+              }
+            }
+          }
         }
         return
       }
@@ -496,26 +611,154 @@ extension RNSmartFilePicker: UINavigationControllerDelegate, UIImagePickerContro
     }
   }
 
-  private func copyVideoToCache(originalURL: URL) throws -> [String: Any] {
+  private func copyAndMaybeTrimVideoToCache(originalURL: URL, completion: @escaping (Result<[String: Any], Error>) -> Void) {
+    do {
+      // Important: copy immediately. For `PHPicker` file representations, the provided URL can become invalid
+      // once the callback returns, so we must persist it synchronously.
+      let fileURL = try copyVideoFileToCacheSync(originalURL: originalURL)
+
+      if self.isVideoTrimEnabled() {
+        // Only support trimming one video at a time.
+        let multiple = (self.pendingOptions?["multiple"] as? Bool) ?? false
+        if multiple {
+          completion(.failure(NSError(domain: "SmartFilePicker", code: 28, userInfo: [NSLocalizedDescriptionKey: "Video trim is not supported with multiple selection"])))
+          return
+        }
+        self.prepareVideoForTrimEditor(inputURL: fileURL) { prepResult in
+          switch prepResult {
+          case .success(let editorInputURL):
+            self.presentVideoTrimEditor(inputURL: editorInputURL) { trimResult in
+              switch trimResult {
+              case .success(let outURLOrNil):
+                guard let outURL = outURLOrNil else {
+                  // User cancelled.
+                  completion(.failure(NSError(domain: "SmartFilePicker", code: 29, userInfo: [NSLocalizedDescriptionKey: "Video trim cancelled"])))
+                  return
+                }
+                do {
+                  // Clean up the original cached file if we created a separate editor input.
+                  if editorInputURL.path != fileURL.path { try? FileManager.default.removeItem(at: editorInputURL) }
+                  try? FileManager.default.removeItem(at: fileURL)
+                  let media = try self.buildVideoMedia(originalURL: originalURL, localURL: outURL)
+                  completion(.success(media))
+                } catch {
+                  completion(.failure(error))
+                }
+              case .failure(let error):
+                completion(.failure(error))
+              }
+            }
+          case .failure(let error):
+            completion(.failure(error))
+          }
+        }
+      } else {
+        let media = try self.buildVideoMedia(originalURL: originalURL, localURL: fileURL)
+        completion(.success(media))
+      }
+    } catch {
+      completion(.failure(error))
+    }
+  }
+
+  private func copyVideoFileToCacheSync(originalURL: URL) throws -> URL {
     let dir = cacheDir()
     let ext = originalURL.pathExtension.isEmpty ? "mp4" : originalURL.pathExtension
     let fileURL = dir.appendingPathComponent("vid_\(UUID().uuidString).\(ext)")
+    if FileManager.default.fileExists(atPath: fileURL.path) {
+      try? FileManager.default.removeItem(at: fileURL)
+    }
     try FileManager.default.copyItem(at: originalURL, to: fileURL)
+    return fileURL
+  }
 
-    let asset = AVURLAsset(url: fileURL)
+  private func prepareVideoForTrimEditor(inputURL: URL, completion: @escaping (Result<URL, Error>) -> Void) {
+    // UIVideoEditorController is picky about what it can edit. If the current file isn't editable,
+    // export it to a .mov container first and try again.
+    if UIVideoEditorController.canEditVideo(atPath: inputURL.path) {
+      completion(.success(inputURL))
+      return
+    }
+
+    DispatchQueue.global(qos: .userInitiated).async {
+      let asset = AVURLAsset(url: inputURL)
+      let presetCandidates = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality]
+      let exporter: AVAssetExportSession? = presetCandidates.compactMap { AVAssetExportSession(asset: asset, presetName: $0) }.first
+      guard let exportSession = exporter else {
+        completion(.failure(NSError(domain: "SmartFilePicker", code: 32, userInfo: [NSLocalizedDescriptionKey: "This video cannot be edited for trimming"])))
+        return
+      }
+
+      let outURL = self.cacheDir().appendingPathComponent("edit_\(UUID().uuidString).mov")
+      if FileManager.default.fileExists(atPath: outURL.path) {
+        try? FileManager.default.removeItem(at: outURL)
+      }
+
+      exportSession.outputURL = outURL
+      let types = exportSession.supportedFileTypes
+      if types.contains(.mov) {
+        exportSession.outputFileType = .mov
+      } else if types.contains(.mp4) {
+        exportSession.outputFileType = .mp4
+      } else if let first = types.first {
+        exportSession.outputFileType = first
+      }
+
+      exportSession.exportAsynchronously {
+        if exportSession.status == .completed, UIVideoEditorController.canEditVideo(atPath: outURL.path) {
+          completion(.success(outURL))
+        } else {
+          try? FileManager.default.removeItem(at: outURL)
+          completion(.failure(exportSession.error ?? NSError(domain: "SmartFilePicker", code: 32, userInfo: [NSLocalizedDescriptionKey: "This video cannot be edited for trimming"])))
+        }
+      }
+    }
+  }
+
+  private func buildVideoMedia(originalURL: URL, localURL: URL) throws -> [String: Any] {
+    let asset = AVURLAsset(url: localURL)
     let durationMs = Int(CMTimeGetSeconds(asset.duration) * 1000.0)
-    let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.doubleValue
-    let mime = preferredMimeType(forExtension: fileURL.pathExtension) ?? "video/*"
+    let fileSize = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? NSNumber)?.doubleValue
+    let mime = preferredMimeType(forExtension: localURL.pathExtension) ?? "video/*"
     var media: [String: Any] = [
       "kind": "video",
       "uri": originalURL.absoluteString,
-      "localPath": fileURL.absoluteString,
-      "fileName": fileURL.lastPathComponent,
+      "localPath": localURL.absoluteString,
+      "fileName": localURL.lastPathComponent,
       "durationMs": durationMs,
       "mimeType": mime
     ]
     if let fileSize { media["fileSize"] = fileSize }
     return media
+  }
+
+  private func videoDurationMs(url: URL) -> Int {
+    let asset = AVURLAsset(url: url)
+    let s = CMTimeGetSeconds(asset.duration)
+    if s.isNaN || s.isInfinite { return 0 }
+    return Int(s * 1000.0)
+  }
+
+  private func presentVideoTrimEditor(inputURL: URL, completion: @escaping (Result<URL?, Error>) -> Void) {
+    guard pendingVideoTrimCompletion == nil else {
+      completion(.failure(NSError(domain: "SmartFilePicker", code: 30, userInfo: [NSLocalizedDescriptionKey: "Another video trim is already in progress"])))
+      return
+    }
+    guard let top = topViewController() else {
+      completion(.failure(NSError(domain: "SmartFilePicker", code: 31, userInfo: [NSLocalizedDescriptionKey: "Unable to find a view controller to present from"])))
+      return
+    }
+    let editor = UIVideoEditorController()
+    editor.videoPath = inputURL.path
+    if let maxDur = videoTrimMaxDurationSeconds() {
+      editor.videoMaximumDuration = maxDur
+    }
+    editor.delegate = self
+
+    videoEditor = editor
+    pendingVideoTrimCompletion = completion
+    pendingVideoTrimEditorInputURL = inputURL
+    present(editor)
   }
 }
 
@@ -539,26 +782,39 @@ extension RNSmartFilePicker: PHPickerViewControllerDelegate {
     var loadError: Error?
 
     if action == "PICK_VIDEO" {
+      if self.isVideoTrimEnabled(), results.count > 1 {
+        picker.dismiss(animated: true) {
+          self.rejectAndClear(code: "E_TRIM_MULTI", message: "Video trim is not supported with multiple selection")
+        }
+        return
+      }
+
       var medias: [[String: Any]] = []
       for r in results {
         group.enter()
         let provider = r.itemProvider
         if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
           provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
-            defer { group.leave() }
-            if let error { loadError = error; return }
-            guard let url else { loadError = NSError(domain: "SmartFilePicker", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing picked video url"]); return }
-            do {
-              let copied = try self.copyFileToCache(originalURL: url, preferredName: nil, forceExtension: nil)
-              var media = copied
-              media["kind"] = "video"
-              if media["mimeType"] == nil { media["mimeType"] = "video/*" }
-              let asset = AVURLAsset(url: URL(string: copied["localPath"] as! String)!)
-              let durationMs = Int(CMTimeGetSeconds(asset.duration) * 1000.0)
-              media["durationMs"] = durationMs
-              medias.append(media)
-            } catch {
+            if let error {
               loadError = error
+              group.leave()
+              return
+            }
+            guard let url else {
+              loadError = NSError(domain: "SmartFilePicker", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing picked video url"])
+              group.leave()
+              return
+            }
+            self.copyAndMaybeTrimVideoToCache(originalURL: url) { result in
+              DispatchQueue.main.async {
+                switch result {
+                case .success(let media):
+                  medias.append(media)
+                case .failure(let error):
+                  loadError = error
+                }
+                group.leave()
+              }
             }
           }
         } else {
@@ -568,7 +824,12 @@ extension RNSmartFilePicker: PHPickerViewControllerDelegate {
       group.notify(queue: .main) {
         picker.dismiss(animated: true) {
           if let loadError {
-            self.rejectAndClear(code: "E_PICK", message: loadError.localizedDescription, error: loadError)
+            let ns = loadError as NSError
+            if ns.domain == "SmartFilePicker" && ns.code == 29 {
+              self.resolveEmptyAndClear()
+            } else {
+              self.rejectAndClear(code: "E_PICK", message: loadError.localizedDescription, error: loadError)
+            }
           } else {
             self.resolveAndClear(medias: medias)
           }
@@ -638,6 +899,67 @@ extension RNSmartFilePicker: UIDocumentPickerDelegate {
       } catch {
         self.rejectAndClear(code: "E_PICK", message: error.localizedDescription, error: error)
       }
+    }
+  }
+}
+
+extension RNSmartFilePicker: UIVideoEditorControllerDelegate {
+  func videoEditorControllerDidCancel(_ editor: UIVideoEditorController) {
+    editor.dismiss(animated: true) {
+      let completion = self.pendingVideoTrimCompletion
+      self.pendingVideoTrimCompletion = nil
+      self.videoEditor = nil
+      if let tmp = self.pendingVideoTrimEditorInputURL {
+        // If we exported an intermediate editor input, remove it.
+        try? FileManager.default.removeItem(at: tmp)
+      }
+      self.pendingVideoTrimEditorInputURL = nil
+      completion?(.success(nil))
+    }
+  }
+
+  func videoEditorController(_ editor: UIVideoEditorController, didSaveEditedVideoToPath editedVideoPath: String) {
+    let completion = self.pendingVideoTrimCompletion
+    self.pendingVideoTrimCompletion = nil
+    self.videoEditor = nil
+    let editorInput = self.pendingVideoTrimEditorInputURL
+    self.pendingVideoTrimEditorInputURL = nil
+
+    do {
+      let editedURL = URL(fileURLWithPath: editedVideoPath)
+      let ext = editedURL.pathExtension.isEmpty ? "mp4" : editedURL.pathExtension
+      let outURL = self.cacheDir().appendingPathComponent("trim_\(UUID().uuidString).\(ext)")
+      if FileManager.default.fileExists(atPath: outURL.path) {
+        try? FileManager.default.removeItem(at: outURL)
+      }
+
+      do {
+        try FileManager.default.moveItem(at: editedURL, to: outURL)
+      } catch {
+        // Fallback: if move fails (e.g. cross-volume), copy instead.
+        try FileManager.default.copyItem(at: editedURL, to: outURL)
+      }
+
+      editor.dismiss(animated: true) {
+        if let tmp = editorInput { try? FileManager.default.removeItem(at: tmp) }
+        completion?(.success(outURL))
+      }
+    } catch {
+      editor.dismiss(animated: true) {
+        if let tmp = editorInput { try? FileManager.default.removeItem(at: tmp) }
+        completion?(.failure(error))
+      }
+    }
+  }
+
+  func videoEditorController(_ editor: UIVideoEditorController, didFailWithError error: Error) {
+    editor.dismiss(animated: true) {
+      let completion = self.pendingVideoTrimCompletion
+      self.pendingVideoTrimCompletion = nil
+      self.videoEditor = nil
+      if let tmp = self.pendingVideoTrimEditorInputURL { try? FileManager.default.removeItem(at: tmp) }
+      self.pendingVideoTrimEditorInputURL = nil
+      completion?(.failure(error))
     }
   }
 }

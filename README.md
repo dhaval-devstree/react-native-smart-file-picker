@@ -222,6 +222,7 @@ Common options (see `src/types.ts` for the full list):
 | direct | auto | Force direct mode (skip sheet) or always show the sheet. |
 | crop | disabled | Enable crop for a single picked image. |
 | compress | disabled | Enable compression for images. |
+| video | unset | Video-specific options (trim). |
 | theme | defaults | Theme the bottom-sheet UI (or set defaults on `SmartFilePickerHost`). |
 | ui | defaults | Override sheet title/subtitle/actions. |
 | permission | defaults | Customize permission-denied alert copy/buttons. |
@@ -267,6 +268,33 @@ Used by `options.compress` (images only):
 | maxWidth / maxHeight | unset | Resize to fit within bounds (keeps aspect ratio). |
 
 Note: When `compress.enabled: true`, the library only keeps the compressed output in cache (it does not retain an additional original copy).
+
+### Video options
+
+Used by `options.video` (videos only):
+
+| Key | Default | Description |
+|---|---|---|
+| trim | unset | Native (user-driven) trim UI: `{ enabled: true, minDurationMs?, maxDurationMs? }`. |
+
+How it works:
+
+- iOS: uses `UIImagePickerController` built-in editing UI (`allowsEditing = true`) for `CAPTURE_VIDEO` / `PICK_VIDEO` when `trim.enabled` is set. iOS only supports a single video in this mode.
+- Android: uses `android-video-trimmer` UI (API 24+). The trimmed output is copied into this library’s cache before returning.
+
+Duration rules:
+
+- `maxDurationMs`: optional. When omitted, max is unlimited.
+- `minDurationMs`: best-effort enforcement. Android enforces via the trim UI when `maxDurationMs` is also set; otherwise it is validated after trimming. iOS always validates after trimming.
+
+Example:
+
+```ts
+await openSmartFilePicker({
+  type: FileSelectionType.CAPTURE_VIDEO,
+  video: { trim: { enabled: true, minDurationMs: 10000 } } // maxDurationMs is optional (unlimited when omitted)
+});
+```
 
 ### Host theme (recommended)
 
@@ -342,6 +370,16 @@ This library uses a `FileProvider` for camera output and ships a default manifes
     android:resource="@xml/smart_file_picker_provider_paths" />
 </provider>
 ```
+
+### Android note (video trim dependency)
+
+When `video.trim.enabled` is used on Android, this library relies on `android-video-trimmer` (JitPack). Ensure your app can resolve JitPack artifacts by adding:
+
+```gradle
+maven { url "https://jitpack.io" }
+```
+
+If your project uses Gradle `dependencyResolutionManagement` (common in newer RN/AGP setups), add the JitPack repo in your `android/settings.gradle` repositories as well.
 
 ## Response
 

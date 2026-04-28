@@ -43,6 +43,8 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
   private var pendingCameraOutputUri: Uri? = null
   private var pendingCameraOutputFile: File? = null
   private var pendingCropRequest: CropRequest? = null
+  private var pendingVideoTrimOriginalUri: Uri? = null
+  private var pendingVideoTrimSourceFile: File? = null
 
   data class CropRequest(
     val source: Uri,
@@ -239,6 +241,53 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
         pendingCropRequest = null
         reject("E_CROP", error?.message ?: "Crop failed")
       }
+      REQ_TRIM_VIDEO -> {
+        val original = pendingVideoTrimOriginalUri
+        val sourceFile = pendingVideoTrimSourceFile
+        val options = pendingOptions
+        pendingVideoTrimOriginalUri = null
+        pendingVideoTrimSourceFile = null
+
+        if (data == null || original == null || options == null) {
+          reject("E_TRIM", "Video trim failed")
+          return
+        }
+
+        val trimmedPath = data.getStringExtra(VideoTrimActivity.EXTRA_OUTPUT_PATH)
+        if (trimmedPath.isNullOrBlank()) {
+          // User cancelled trim.
+          try { sourceFile?.delete() } catch (_: Exception) {}
+          resolveEmpty()
+          return
+        }
+
+        ioExecutor.execute {
+          try {
+            try { sourceFile?.delete() } catch (_: Exception) {}
+            val normalized = normalizeTrimmedVideoFile(File(trimmedPath))
+            val cached = copyFilePathToCache(normalized, preferredExt = "mp4")
+            if (cached.absolutePath != normalized.absolutePath) {
+              try { normalized.delete() } catch (_: Exception) {}
+            }
+            val minMs = videoTrimMinDurationMs(options) ?: 0L
+            if (minMs > 0L) {
+              val duration = videoDurationMs(cached)
+              if (duration in 1 until minMs) {
+                try { cached.delete() } catch (_: Exception) {}
+                reject("E_TRIM_MIN_DURATION", "Trimmed video is shorter than the minimum duration")
+                return@execute
+              }
+            }
+            val media = buildVideoMediaFromFile(original, cached)
+            val result = Arguments.createMap().apply {
+              putArray("medias", Arguments.createArray().apply { pushMap(media) })
+            }
+            resolve(result)
+          } catch (e: Exception) {
+            reject("E_TRIM", e.message ?: "Video trim failed")
+          }
+        }
+      }
     }
   }
 
@@ -272,6 +321,15 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
       startCrop(uris[0], crop!!)
       return
     }
+    val videoTrimEnabled = kind == "video" && isVideoTrimEnabled(pendingOptions)
+    if (videoTrimEnabled) {
+      if (uris.size > 1) {
+        reject("E_TRIM_MULTI", "Video trim is not supported with multiple selection")
+        return
+      }
+      startVideoTrimFlow(uris[0])
+      return
+    }
     handleUris(kind, uris)
   }
 
@@ -282,7 +340,52 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
       startCrop(uri, crop!!)
       return
     }
+    val videoTrimEnabled = kind == "video" && isVideoTrimEnabled(pendingOptions)
+    if (videoTrimEnabled) {
+      startVideoTrimFlow(uri)
+      return
+    }
     handleUris(kind, listOf(uri))
+  }
+
+  private fun startVideoTrimFlow(originalUri: Uri) {
+    val activity = reactApplicationContext.currentActivity
+    val options = pendingOptions
+    if (activity == null || options == null) {
+      reject("E_NO_ACTIVITY", "Current activity is null")
+      return
+    }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+      reject("E_TRIM_UNSUPPORTED", "Video trim is only supported on Android 7.0+")
+      return
+    }
+
+    ioExecutor.execute {
+      try {
+        val sourceFile = copyUriToCache(originalUri, options, preferredExt = guessVideoExt(originalUri))
+        pendingVideoTrimOriginalUri = originalUri
+        pendingVideoTrimSourceFile = sourceFile
+        val maxDurationMs = videoTrimMaxDurationMs(options)
+        val minDurationMs = videoTrimMinDurationMs(options)
+        mainHandler.post {
+          try {
+            val intent = Intent(activity, VideoTrimActivity::class.java).apply {
+              putExtra(VideoTrimActivity.EXTRA_INPUT_URI, Uri.fromFile(sourceFile).toString())
+              if (maxDurationMs != null) putExtra(VideoTrimActivity.EXTRA_MAX_DURATION_MS, maxDurationMs)
+              if (minDurationMs != null) putExtra(VideoTrimActivity.EXTRA_MIN_DURATION_MS, minDurationMs)
+            }
+            activity.startActivityForResult(intent, REQ_TRIM_VIDEO)
+          } catch (e: Exception) {
+            try { sourceFile.delete() } catch (_: Exception) {}
+            pendingVideoTrimOriginalUri = null
+            pendingVideoTrimSourceFile = null
+            reject("E_TRIM", e.message ?: "Failed to start video trim")
+          }
+        }
+      } catch (e: Exception) {
+        reject("E_TRIM", e.message ?: "Failed to prepare video for trim")
+      }
+    }
   }
 
   private fun startCrop(source: Uri, cropOptions: ReadableMap) {
@@ -408,6 +511,80 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
       putDouble("fileSize", file.length().toDouble())
       if (durationMs != null) putInt("durationMs", durationMs)
     }
+  }
+
+  private fun buildVideoMediaFromFile(originalUri: Uri, file: File): WritableMap {
+    val retriever = MediaMetadataRetriever()
+    var durationMs: Int? = null
+    try {
+      retriever.setDataSource(file.absolutePath)
+      val d = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+      durationMs = d?.toIntOrNull()
+    } catch (_: Exception) {
+    } finally {
+      try { retriever.release() } catch (_: Exception) {}
+    }
+    val mime = guessMimeFromExt(file.extension, fallback = contentType(originalUri))
+    return Arguments.createMap().apply {
+      putString("kind", "video")
+      putString("uri", originalUri.toString())
+      putString("localPath", Uri.fromFile(file).toString())
+      putString("fileName", file.name)
+      putString("mimeType", mime)
+      putDouble("fileSize", file.length().toDouble())
+      if (durationMs != null) putInt("durationMs", durationMs)
+    }
+  }
+
+  private fun videoDurationMs(file: File): Long {
+    val retriever = MediaMetadataRetriever()
+    return try {
+      retriever.setDataSource(file.absolutePath)
+      retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+    } catch (_: Exception) {
+      0L
+    } finally {
+      try { retriever.release() } catch (_: Exception) {}
+    }
+  }
+
+  private fun normalizeTrimmedVideoFile(file: File): File {
+    // Some trimmer outputs end up with a ".null" extension which breaks fileName UX and mime guessing.
+    val ext = file.extension.lowercase()
+    if (ext != "null" && ext.isNotBlank()) return file
+    val parent = file.parentFile ?: return file
+    val fixed = File(parent, "${file.nameWithoutExtension}.mp4")
+    if (fixed.exists()) {
+      try { fixed.delete() } catch (_: Exception) {}
+    }
+    return try {
+      if (file.renameTo(fixed)) fixed
+      else {
+        file.copyTo(fixed, overwrite = true)
+        try { file.delete() } catch (_: Exception) {}
+        fixed
+      }
+    } catch (_: Exception) {
+      file
+    }
+  }
+
+  private fun copyFilePathToCache(source: File, preferredExt: String?): File {
+    val ext = when {
+      source.extension.isNotBlank() && source.extension.lowercase() != "null" -> source.extension
+      !preferredExt.isNullOrBlank() -> preferredExt
+      else -> "mp4"
+    }
+    val outFile = File(ensureCacheDir(), "trim_${UUID.randomUUID()}.$ext")
+    if (outFile.exists()) {
+      try { outFile.delete() } catch (_: Exception) {}
+    }
+    source.inputStream().use { input ->
+      FileOutputStream(outFile).use { output ->
+        input.copyTo(output)
+      }
+    }
+    return outFile
   }
 
   private fun buildDocumentMedia(uri: Uri, options: ReadableMap): WritableMap {
@@ -659,6 +836,8 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
     pendingCameraOutputUri = null
     pendingCameraOutputFile = null
     pendingCropRequest = null
+    pendingVideoTrimOriginalUri = null
+    pendingVideoTrimSourceFile = null
   }
 
   companion object {
@@ -667,5 +846,26 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
     private const val REQ_PICK_IMAGE = 9404
     private const val REQ_PICK_VIDEO = 9405
     private const val REQ_PICK_DOCUMENT = 9406
+    private const val REQ_TRIM_VIDEO = 9407
+  }
+
+  private fun isVideoTrimEnabled(options: ReadableMap?): Boolean {
+    val video = options?.optMap("video") ?: return false
+    val trim = video.optMap("trim") ?: return false
+    return trim.optBoolean("enabled", false)
+  }
+
+  private fun videoTrimMaxDurationMs(options: ReadableMap): Long? {
+    val video = options.optMap("video") ?: return null
+    val trim = video.optMap("trim") ?: return null
+    val ms = trim.optInt("maxDurationMs") ?: return null
+    return ms.toLong().takeIf { it > 0 }
+  }
+
+  private fun videoTrimMinDurationMs(options: ReadableMap): Long? {
+    val video = options.optMap("video") ?: return null
+    val trim = video.optMap("trim") ?: return null
+    val ms = trim.optInt("minDurationMs") ?: return null
+    return ms.toLong().takeIf { it > 0 }
   }
 }
