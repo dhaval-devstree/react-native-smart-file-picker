@@ -1,6 +1,7 @@
 import { NativeModules, Platform } from "react-native";
 import type { SmartFilePickerOptions, SmartFilePickerResult } from "../types";
-import { ensurePermissionsForAction } from "../permissions";
+import { ensurePermissionsForAction, showPermissionDeniedAlertForAction } from "../permissions";
+import { SmartFilePickerError } from "../errors";
 
 type NativeSmartFilePicker = {
   performAction(action: string, options: SmartFilePickerOptions): Promise<SmartFilePickerResult>;
@@ -24,9 +25,28 @@ function getNative(): NativeSmartFilePicker {
 }
 
 export async function performAction(action: string, options: SmartFilePickerOptions): Promise<SmartFilePickerResult> {
-  const ok = await ensurePermissionsForAction(action, options);
-  if (!ok) return { medias: [] };
-  return getNative().performAction(action, options);
+  try {
+    const ok = await ensurePermissionsForAction(action, options);
+    if (!ok) return { medias: [] };
+  } catch (e) {
+    // Keep parity with the "permission denied => empty medias" behavior and avoid crashing the app.
+    if (e instanceof SmartFilePickerError) {
+      console.warn(`[react-native-smart-file-picker] ${e.code}: ${e.message}`);
+      return { medias: [] };
+    }
+    throw e;
+  }
+
+  try {
+    return await getNative().performAction(action, options);
+  } catch (e: any) {
+    const code = e?.code;
+    if (code === "E_PERMISSION_DENIED" || code === "E_PERMISSION_BLOCKED" || code === "E_PERMISSION_UNAVAILABLE") {
+      showPermissionDeniedAlertForAction(options, action);
+      return { medias: [] };
+    }
+    throw e;
+  }
 }
 
 export async function clearCache(): Promise<void> {

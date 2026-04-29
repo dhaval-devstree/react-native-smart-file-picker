@@ -4,7 +4,7 @@
 
   <application>
     <activity
-      android:name="com.yalantis.ucrop.UCropActivity"
+      android:name=".SmartUCropActivity"
       android:exported="false"
       android:screenOrientation="portrait"
       android:theme="@style/Theme.AppCompat.Light.NoActionBar" />

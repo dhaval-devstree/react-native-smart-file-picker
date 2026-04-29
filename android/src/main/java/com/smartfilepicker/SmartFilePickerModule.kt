@@ -187,6 +187,33 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
 
   override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
     if (pendingPromise == null) return
+    if (requestCode == REQ_TRIM_VIDEO && resultCode != Activity.RESULT_OK) {
+      // User cancelled trim (back button). Clean up temp cached copy.
+      val original = pendingVideoTrimOriginalUri
+      val sourceFile = pendingVideoTrimSourceFile
+      pendingVideoTrimOriginalUri = null
+      pendingVideoTrimSourceFile = null
+      try { sourceFile?.delete() } catch (_: Exception) {}
+
+      if (original == null) {
+        resolveEmpty()
+        return
+      }
+
+      ioExecutor.execute {
+        try {
+          val media = buildVideoMediaFromContentUri(original)
+          val result = Arguments.createMap().apply {
+            putArray("medias", Arguments.createArray().apply { pushMap(media) })
+          }
+          resolve(result)
+        } catch (_: Exception) {
+          // Fallback: behave like cancel.
+          resolveEmpty()
+        }
+      }
+      return
+    }
     if (resultCode != Activity.RESULT_OK) {
       resolveEmpty()
       return
@@ -248,8 +275,27 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
         pendingVideoTrimOriginalUri = null
         pendingVideoTrimSourceFile = null
 
-        if (data == null || original == null || options == null) {
+        if (original == null || options == null) {
+          // Shouldn't happen, but avoid leaking the cached temp copy.
+          try { sourceFile?.delete() } catch (_: Exception) {}
           reject("E_TRIM", "Video trim failed")
+          return
+        }
+
+        if (data == null) {
+          // Cancelled: VideoTrimActivity returns RESULT_OK but without intent data.
+          try { sourceFile?.delete() } catch (_: Exception) {}
+          ioExecutor.execute {
+            try {
+              val media = buildVideoMediaFromContentUri(original)
+              val result = Arguments.createMap().apply {
+                putArray("medias", Arguments.createArray().apply { pushMap(media) })
+              }
+              resolve(result)
+            } catch (_: Exception) {
+              resolveEmpty()
+            }
+          }
           return
         }
 
@@ -431,7 +477,9 @@ class SmartFilePickerModule(private val reactContext: ReactApplicationContext) :
       }
 
       pendingCropRequest = CropRequest(source = source, options = cropOptions)
-      uCrop.start(activity)
+      // Use our insets-aware uCrop activity to avoid overlapping system bars on Android edge-to-edge.
+      val intent = uCrop.getIntent(activity).setClass(activity, SmartUCropActivity::class.java)
+      activity.startActivityForResult(intent, UCrop.REQUEST_CROP)
     } catch (e: Exception) {
       reject("E_CROP", e.message ?: "Failed to start crop")
     }

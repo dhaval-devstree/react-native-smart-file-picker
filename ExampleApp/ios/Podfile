@@ -15,7 +15,8 @@ prepare_react_native_project!
 
 setup_permissions([
   'Camera',
-  'Microphone'
+  'Microphone',
+  'PhotoLibrary'
 ])
 
 linkage = ENV['USE_FRAMEWORKS']

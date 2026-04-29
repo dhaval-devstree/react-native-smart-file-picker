@@ -128,6 +128,39 @@ function showPermissionDeniedAlert(options: SmartFilePickerOptions, permission: 
   ]);
 }
 
+function defaultPromptForAction(action: string): { title: string; description: string } {
+  switch (action) {
+    case "CAPTURE_IMAGE":
+    case "CAPTURE_VIDEO":
+      return { title: "Camera Permission", description: "This app would like to access your camera to continue." };
+    case "PICK_IMAGE":
+    case "PICK_VIDEO":
+      return { title: "Photo Library Permission", description: "This app would like to access your photo library to continue." };
+    default:
+      return { title: "Permission Required", description: "This app needs permission to continue." };
+  }
+}
+
+export function showPermissionDeniedAlertForAction(options: SmartFilePickerOptions, action: string) {
+  const prompt = options.permission ?? {};
+  const defaults = defaultPromptForAction(action);
+  const title = prompt.title ?? defaults.title;
+  const description = prompt.description ?? defaults.description;
+  const cancel = prompt.cancel ?? "Cancel";
+  const ok = prompt.ok ?? "OK";
+  const shouldOpenSettings = prompt.openSettings !== false;
+
+  Alert.alert(title, description, [
+    { text: cancel, style: "cancel" },
+    ...(shouldOpenSettings ? [{ text: ok, onPress: () => Linking.openSettings(), isPreferred: true } as any] : [])
+  ]);
+}
+
+function isMissingPermissionHandlerError(e: unknown): boolean {
+  const msg = (e as any)?.message;
+  return typeof msg === "string" && msg.includes("permission handler detected");
+}
+
 /**
  * Returns:
  * - `true` when all required permissions are granted
@@ -141,7 +174,30 @@ export async function ensurePermissionsForAction(action: string, options: SmartF
   const perms = getRNPermissions();
 
   for (const permission of permissions) {
-    const status = await perms.request(permission);
+    let status: string;
+    try {
+      status = await perms.request(permission);
+    } catch (e) {
+      // Some apps don't include the requested iOS permission handler in their Podfile
+      // (RNPermissions requires explicit handler pods). Avoid crashing the app.
+      //
+      // Photo library permission is also requested natively on iOS for legacy pickers / trim flows,
+      // so we can safely skip the RNPermissions preflight when its handler is missing.
+      if (Platform.OS === "ios" && String(permission).toLowerCase().includes("photo_library") && isMissingPermissionHandlerError(e)) {
+        console.warn(
+          "[react-native-smart-file-picker] Missing RNPermissions PhotoLibrary handler. Skipping JS permission preflight; iOS native picker will request it if needed."
+        );
+        continue;
+      }
+
+      if (isMissingPermissionHandlerError(e)) {
+        throw new SmartFilePickerError(
+          "E_PERMISSION_UNAVAILABLE",
+          `Missing native permission handler for '${permission}'. Configure it in your app (react-native-permissions iOS Podfile handlers) or request permissions at the app level.`
+        );
+      }
+      throw e;
+    }
     if (isGranted(status, perms.RESULTS)) continue;
 
     showPermissionDeniedAlert(options, permission);

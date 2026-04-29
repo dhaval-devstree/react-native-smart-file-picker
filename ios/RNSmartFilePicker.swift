@@ -632,6 +632,8 @@ extension RNSmartFilePicker: UINavigationControllerDelegate, UIImagePickerContro
               case .success(let outURLOrNil):
                 guard let outURL = outURLOrNil else {
                   // User cancelled.
+                  if editorInputURL.path != fileURL.path { try? FileManager.default.removeItem(at: editorInputURL) }
+                  try? FileManager.default.removeItem(at: fileURL)
                   completion(.failure(NSError(domain: "SmartFilePicker", code: 29, userInfo: [NSLocalizedDescriptionKey: "Video trim cancelled"])))
                   return
                 }
@@ -645,10 +647,13 @@ extension RNSmartFilePicker: UINavigationControllerDelegate, UIImagePickerContro
                   completion(.failure(error))
                 }
               case .failure(let error):
+                if editorInputURL.path != fileURL.path { try? FileManager.default.removeItem(at: editorInputURL) }
+                try? FileManager.default.removeItem(at: fileURL)
                 completion(.failure(error))
               }
             }
           case .failure(let error):
+            try? FileManager.default.removeItem(at: fileURL)
             completion(.failure(error))
           }
         }

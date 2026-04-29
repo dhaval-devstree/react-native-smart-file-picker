@@ -37,7 +37,7 @@ Configure the iOS permission handlers in your app `Podfile` (choose what you nee
 
 - `Camera` (required for `CAPTURE_IMAGE` / `CAPTURE_VIDEO`)
 - `Microphone` (required for `CAPTURE_VIDEO` on iOS)
-- `PhotoLibrary` (only required for `PICK_IMAGE` / `PICK_VIDEO` on iOS < 14)
+- `PhotoLibrary` (optional; only if your app wants to use `react-native-permissions` for photo-library preflight checks)
 
 Please refer to [`react-native-permissions`](https://www.npmjs.com/package/react-native-permissions) for installation and native setup.
 
@@ -67,7 +67,7 @@ For video capture on iOS, also add:
 <string>We need microphone access to record video audio.</string>
 ```
 
-For iOS < 14 photo picking fallback, add:
+For iOS < 14 photo picking fallback (and for video trim UI which uses the legacy picker), add:
 
 ```xml
 <key>NSPhotoLibraryUsageDescription</key>
