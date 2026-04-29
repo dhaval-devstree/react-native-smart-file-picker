@@ -8,7 +8,16 @@ dependencyResolutionManagement {
     maven { url "https://jitpack.io" }
   }
 }
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+  // Avoid relying on `npx` being on PATH when Gradle runs.
+  def nodeBinary = System.getenv("NODE_BINARY")
+  if (nodeBinary == null || nodeBinary.trim().isEmpty()) {
+    def homebrewNode = "/opt/homebrew/bin/node"
+    nodeBinary = file(homebrewNode).exists() ? homebrewNode : "node"
+  }
+  def cliFile = file("../node_modules/@react-native-community/cli/build/bin.js")
+  ex.autolinkLibrariesFromCommand([nodeBinary, cliFile.absolutePath, "config"], file(".."))
+}
 rootProject.name = 'com.exampleapp'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')
